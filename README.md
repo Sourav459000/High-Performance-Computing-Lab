@@ -1,1 +1,1 @@
-# HIgh-Performance-Computing-Lab
+# High-Performance-Computing-Lab
