@@ -1,54 +1,61 @@
 #include <stdio.h>
-#include <stdlib.h>
+#include <cuda.h>
 
-void matrixAdd(int *A, int *B, int *C, int rows, int cols) {
-    // Perform element-wise matrix addition
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < cols; j++) {
-            C[i * cols + j] = A[i * cols + j] + B[i * cols + j];
-        }
-    }
-}
+// CUDA kernel for matrix addition
+__global__ void matrixAddKernel(int *A, int *B, int *C, int rows, int cols) {
+    int row = blockIdx.y * blockDim.y + threadIdx.y; // Calculate row index
+    int col = blockIdx.x * blockDim.x + threadIdx.x; // Calculate column index
 
-void printMatrix(int *matrix, int rows, int cols) {
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < cols; j++) {
-            printf("%d ", matrix[i * cols + j]);
-        }
-        printf("\n");
+    if (row < rows && col < cols) {
+        int idx = row * cols + col;
+        C[idx] = A[idx] + B[idx];
     }
 }
 
 int main() {
-    // Define the dimensions of matrix A and matrix B (both 3x3 for example)
     int rows = 3, cols = 3;
+    int size = rows * cols * sizeof(int);
 
-    // Allocate memory for matrices A, B, and C (the result matrix)
-    int *A = (int *)malloc(rows * cols * sizeof(int));
-    int *B = (int *)malloc(rows * cols * sizeof(int));
-    int *C = (int *)malloc(rows * cols * sizeof(int));
+    // Host matrices
+    int h_A[] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+    int h_B[] = {9, 8, 7, 6, 5, 4, 3, 2, 1};
+    int h_C[rows * cols];
 
-    // Initialize matrix A (3x3)
-    A[0] = 1; A[1] = 2; A[2] = 3;
-    A[3] = 4; A[4] = 5; A[5] = 6;
-    A[6] = 7; A[7] = 8; A[8] = 9;
+    // Device matrices
+    int *d_A, *d_B, *d_C;
 
-    // Initialize matrix B (3x3)
-    B[0] = 9; B[1] = 8; B[2] = 7;
-    B[3] = 6; B[4] = 5; B[5] = 4;
-    B[6] = 3; B[7] = 2; B[8] = 1;
+    // Allocate memory on GPU
+    cudaMalloc(&d_A, size);
+    cudaMalloc(&d_B, size);
+    cudaMalloc(&d_C, size);
 
-    // Perform matrix addition
-    matrixAdd(A, B, C, rows, cols);
+    // Copy matrices A and B from host to device
+    cudaMemcpy(d_A, h_A, size, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_B, h_B, size, cudaMemcpyHostToDevice);
 
-    // Print the result matrix C
+    // Define grid and block dimensions
+    dim3 blockDim(3, 3); // 3x3 threads per block
+    dim3 gridDim((cols + blockDim.x - 1) / blockDim.x, (rows + blockDim.y - 1) / blockDim.y);
+
+    // Launch the kernel
+    matrixAddKernel<<<gridDim, blockDim>>>(d_A, d_B, d_C, rows, cols);
+
+    // Copy result matrix C from device to host
+    cudaMemcpy(h_C, d_C, size, cudaMemcpyDeviceToHost);
+
+    // Print the result matrix
     printf("Result matrix C (A + B):\n");
-    printMatrix(C, rows, cols);
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            printf("%d ", h_C[i * cols + j]);
+        }
+        printf("\n");
+    }
 
-    // Free the allocated memory
-    free(A);
-    free(B);
-    free(C);
+    // Free GPU memory
+    cudaFree(d_A);
+    cudaFree(d_B);
+    cudaFree(d_C);
 
     return 0;
 }

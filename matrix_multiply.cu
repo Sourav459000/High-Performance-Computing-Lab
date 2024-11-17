@@ -1,57 +1,52 @@
 #include <stdio.h>
-#include <stdlib.h>
+#include <cuda.h>
 
-void matrixMultiply(int *A, int *B, int *C, int A_rows, int A_cols, int B_cols) {
-    // Multiply A (A_rows x A_cols) with B (A_cols x B_cols) and store result in C (A_rows x B_cols)
-    for (int i = 0; i < A_rows; i++) {
-        for (int j = 0; j < B_cols; j++) {
-            C[i * B_cols + j] = 0;
-            for (int k = 0; k < A_cols; k++) {
-                C[i * B_cols + j] += A[i * A_cols + k] * B[k * B_cols + j];
-            }
-        }
-    }
-}
+__global__ void matrixMultiplyKernel(int *A, int *B, int *C, int A_rows, int A_cols, int B_cols) {
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
 
-void printMatrix(int *matrix, int rows, int cols) {
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < cols; j++) {
-            printf("%d ", matrix[i * cols + j]);
+    if (row < A_rows && col < B_cols) {
+        int sum = 0;
+        for (int k = 0; k < A_cols; k++) {
+            sum += A[row * A_cols + k] * B[k * B_cols + col];
         }
-        printf("\n");
+        C[row * B_cols + col] = sum;
     }
 }
 
 int main() {
-    // Define the dimensions of matrix A (2x3) and matrix B (3x2)
-    int A_rows = 2, A_cols = 3;
-    int B_rows = 3, B_cols = 2;
+    int A_rows = 2, A_cols = 3, B_cols = 2;
 
-    // Allocate memory for matrices A, B, and C
-    int *A = (int *)malloc(A_rows * A_cols * sizeof(int));
-    int *B = (int *)malloc(B_rows * B_cols * sizeof(int));
-    int *C = (int *)malloc(A_rows * B_cols * sizeof(int));
+    int A[6] = {1, 2, 3, 4, 5, 6};
+    int B[6] = {7, 8, 9, 10, 11, 12};
+    int C[4];
 
-    // Initialize matrix A (2x3)
-    A[0] = 1; A[1] = 2; A[2] = 3;
-    A[3] = 4; A[4] = 5; A[5] = 6;
+    int *d_A, *d_B, *d_C;
+    cudaMalloc(&d_A, A_rows * A_cols * sizeof(int));
+    cudaMalloc(&d_B, A_cols * B_cols * sizeof(int));
+    cudaMalloc(&d_C, A_rows * B_cols * sizeof(int));
 
-    // Initialize matrix B (3x2)
-    B[0] = 7; B[1] = 8;
-    B[2] = 9; B[3] = 10;
-    B[4] = 11; B[5] = 12;
+    cudaMemcpy(d_A, A, A_rows * A_cols * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_B, B, A_cols * B_cols * sizeof(int), cudaMemcpyHostToDevice);
 
-    // Call matrix multiplication function
-    matrixMultiply(A, B, C, A_rows, A_cols, B_cols);
+    dim3 threadsPerBlock(16, 16);
+    dim3 numBlocks((B_cols + 15) / 16, (A_rows + 15) / 16);
 
-    // Output the result matrix C
-    printf("Result matrix C (A * B):\n");
-    printMatrix(C, A_rows, B_cols);
+    matrixMultiplyKernel<<<numBlocks, threadsPerBlock>>>(d_A, d_B, d_C, A_rows, A_cols, B_cols);
 
-    // Free dynamically allocated memory
-    free(A);
-    free(B);
-    free(C);
+    cudaMemcpy(C, d_C, A_rows * B_cols * sizeof(int), cudaMemcpyDeviceToHost);
+
+    printf("Result matrix C:\n");
+    for (int i = 0; i < A_rows; i++) {
+        for (int j = 0; j < B_cols; j++) {
+            printf("%d ", C[i * B_cols + j]);
+        }
+        printf("\n");
+    }
+
+    cudaFree(d_A);
+    cudaFree(d_B);
+    cudaFree(d_C);
 
     return 0;
 }
